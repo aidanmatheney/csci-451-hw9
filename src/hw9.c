@@ -9,25 +9,33 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <stdio.h>
+#include <time.h>
+#include <pthread.h>
 #include <assert.h>
 
 struct ProcessWordsWithMutexThreadStartArg {
+    unsigned int threadNumber;
     FILE *inFile;
-    pthread_mutex_t *inFileMutexPtr;
     FILE *outFile;
+    pthread_mutex_t *fileMutexPtr;
 };
 static void *processWordsWithMutexThreadStart(void *argAsVoidPtr);
 
 struct ProcessWordsWithoutMutexThreadStartArg {
+    unsigned int threadNumber;
     FILE *inFile;
     FILE *outFile;
 };
 static void *processWordsWithoutMutexThreadStart(void *argAsVoidPtr);
 
 /**
- * Run CSCI 451 HW9. TODO
+ * Run CSCI 451 HW9. This launches threads which each read words from the input file and write them to the output file.
+ *
+ * @param inFilePath The input file.
+ * @param outFilePath The output file.
+ * @param mode Whether to run in Mutex or NoMutex mode.
+ * @param threadCount The number of threads to launch.
  */
 void hw9(
     char const * const inFilePath,
@@ -37,17 +45,17 @@ void hw9(
 ) {
     guardNotNull(inFilePath, "inFilePath", "hw9");
     guardNotNull(outFilePath, "outFilePath", "hw9");
-    guard(threadCount > 0, "threadCount must be positive");
+    guard(threadCount > 0, "hw9: threadCount must be positive");
 
     FILE * const inFile = safeFopen(inFilePath, "r", "hw9");
     FILE * const outFile = safeFopen(outFilePath, "w", "hw9");
 
-    pthread_mutex_t inFileMutex;
+    pthread_mutex_t fileMutex;
 
     void *threadStartArgs;
     pthread_t * const threadIds = safeMalloc(sizeof *threadIds * threadCount, "hw9");
     if (mode == HW9Mode_Mutex) {
-        safeMutexInit(&inFileMutex, NULL, "hw9");
+        safeMutexInit(&fileMutex, NULL, "hw9");
 
         struct ProcessWordsWithMutexThreadStartArg * const mutexThreadStartArgs = (
             safeMalloc(sizeof *mutexThreadStartArgs * threadCount, "hw9")
@@ -57,9 +65,10 @@ void hw9(
         for (size_t i = 0; i < threadCount; i += 1) {
             struct ProcessWordsWithMutexThreadStartArg * const threadStartArgPtr = &mutexThreadStartArgs[i];
 
+            threadStartArgPtr->threadNumber = (unsigned int)i + 1;
             threadStartArgPtr->inFile = inFile;
-            threadStartArgPtr->inFileMutexPtr = &inFileMutex;
             threadStartArgPtr->outFile = outFile;
+            threadStartArgPtr->fileMutexPtr = &fileMutex;
 
             threadIds[i] = safePthreadCreate(
                 NULL,
@@ -77,6 +86,7 @@ void hw9(
         for (size_t i = 0; i < threadCount; i += 1) {
             struct ProcessWordsWithoutMutexThreadStartArg * const threadStartArgPtr = &noMutexThreadStartArgs[i];
 
+            threadStartArgPtr->threadNumber = (unsigned int)i + 1;
             threadStartArgPtr->inFile = inFile;
             threadStartArgPtr->outFile = outFile;
 
@@ -98,7 +108,7 @@ void hw9(
     free(threadIds);
 
     if (mode == HW9Mode_Mutex) {
-        safeMutexDestroy(&inFileMutex, "hw9");
+        safeMutexDestroy(&fileMutex, "hw9");
     }
 
     fclose(inFile);
@@ -123,7 +133,25 @@ static void *processWordsWithMutexThreadStart(void * const argAsVoidPtr) {
     assert(argAsVoidPtr != NULL);
     struct ProcessWordsWithMutexThreadStartArg * const argPtr = argAsVoidPtr;
 
+    while (true) {
+        safeMutexLock(argPtr->fileMutexPtr, "hw9 processWordsWithMutexThreadStart");
 
+        char * const word = readFileLine(argPtr->inFile);
+        if (word == NULL) {
+            safeMutexUnlock(argPtr->fileMutexPtr, "hw9 processWordsWithMutexThreadStart");
+            break;
+        }
+
+        fprintf(argPtr->outFile, "%s\t%u\n", word, argPtr->threadNumber);
+        free(word);
+
+        safeMutexUnlock(argPtr->fileMutexPtr, "hw9 processWordsWithMutexThreadStart");
+
+        nanosleep(&(struct timespec){
+            .tv_sec = 0,
+            .tv_nsec = randomInt(0, 1000 * 1000 * 1000)
+        }, NULL);
+    }
 
     return NULL;
 }
@@ -132,7 +160,20 @@ static void *processWordsWithoutMutexThreadStart(void * const argAsVoidPtr) {
     assert(argAsVoidPtr != NULL);
     struct ProcessWordsWithoutMutexThreadStartArg * const argPtr = argAsVoidPtr;
 
+    while (true) {
+        char * const word = readFileLine(argPtr->inFile);
+        if (word == NULL) {
+            break;
+        }
 
+        fprintf(argPtr->outFile, "%s\t%u\n", word, argPtr->threadNumber);
+        free(word);
+
+        nanosleep(&(struct timespec){
+            .tv_sec = 0,
+            .tv_nsec = randomInt(0, 1000 * 1000 * 1000)
+        }, NULL);
+    }
 
     return NULL;
 }

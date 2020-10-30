@@ -407,7 +407,7 @@
         \
         guardFmt( \
             index < list->count, \
-            "%s: Index (%zu) must be in range (count: %zu)", \
+            "%s: Index (%zu) must be in range (list count: %zu)", \
             callerName, \
             index, \
             list->count \
@@ -420,7 +420,7 @@
         \
         guardFmt( \
             index <= list->count, \
-            "%s: Index (%zu) must be in range (count: %zu) or the next available index", \
+            "%s: Index (%zu) must be in range (list count: %zu) or the next available index", \
             callerName, \
             index, \
             list->count \
@@ -431,14 +431,24 @@
         assert(list != NULL); \
         assert(callerName != NULL); \
         \
-        TList##_guardIndexInRange(list, startIndex, callerName); \
-        \
-        size_t const endIndex = startIndex + count - 1; \
-        guardFmt( \
-            endIndex < list->count, \
-            "%s: End index (%zu) must be within range (count: %zu)", \
-            callerName, \
-            endIndex, \
-            list->count \
-        ); \
+        if (count == 0) { \
+            guardFmt( \
+                startIndex <= list->count, \
+                "%s: Start index (%zu) must be within range (list count: %zu)", \
+                callerName, \
+                startIndex, \
+                list->count \
+            ); \
+        } else { \
+            TList##_guardIndexInRange(list, startIndex, callerName); \
+            \
+            size_t const endIndex = startIndex + count - 1; \
+            guardFmt( \
+                endIndex < list->count, \
+                "%s: End index (%zu) must be within range (list count: %zu)", \
+                callerName, \
+                endIndex, \
+                list->count \
+            ); \
+        } \
     }
